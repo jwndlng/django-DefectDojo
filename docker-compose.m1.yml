@@ -120,8 +120,6 @@ services:
     volumes:
        - defectdojo_data:/var/lib/mysql
   rabbitmq:
-#    platform: linux/x86_64
-#    image: rabbitmq:3.9.13@sha256:cf92a7c03a4f1a1627e0b30650aae9c1345ac4a45bff94a0adf133b6980ce26f
     image: rabbitmq:3-management-alpine
     volumes:
        - defectdojo_rabbitmq:/var/lib/rabbitmq
