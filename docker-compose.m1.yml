@@ -1,0 +1,131 @@
+# This docker-compose.yml file  is fully functional to evaluate DefectDojo
+# in your local environment.
+#
+# Although Docker Compose is one of the supported installation methods to
+# deploy a containerized DefectDojo in a production environment, the
+# docker-compose.yml file is not intended for production use without first
+# customizing it to your particular situation.
+---
+version: '3.7'
+services:
+  nginx:
+    platform: linux/x86_64
+    build:
+      context: ./
+      dockerfile: Dockerfile.nginx
+    image: "defectdojo/defectdojo-nginx:${NGINX_VERSION:-latest}"
+    depends_on:
+      - uwsgi
+    environment:
+      NGINX_METRICS_ENABLED: "${NGINX_METRICS_ENABLED:-false}"
+    volumes:
+      - defectdojo_media:/usr/share/nginx/html/media
+    ports:
+      - target: 8080
+        published: ${DD_PORT:-8080}
+        protocol: tcp
+        mode: host
+      - target: 8443
+        published: ${DD_TLS_PORT:-8443}
+        protocol: tcp
+        mode: host
+  uwsgi:
+    platform: linux/x86_64
+    build:
+      context: ./
+      dockerfile: Dockerfile.django
+      target: django
+    image: "defectdojo/defectdojo-django:${DJANGO_VERSION:-latest}"
+    depends_on:
+      - mysql
+    entrypoint: ['/wait-for-it.sh', 'mysql:3306', '-t', '30', '--', '/entrypoint-uwsgi.sh']
+    environment:
+      DD_DEBUG: 'False'
+      DD_DJANGO_METRICS_ENABLED: "${DD_DJANGO_METRICS_ENABLED:-False}"
+      DD_ALLOWED_HOSTS: "${DD_ALLOWED_HOSTS:-*}"
+      DD_DATABASE_URL: "${DD_DATABASE_URL:-mysql://defectdojo:defectdojo@mysql:3306/defectdojo}"
+      DD_CELERY_BROKER_USER: "${DD_CELERY_BROKER_USER:-guest}"
+      DD_CELERY_BROKER_PASSWORD: "${DD_CELERY_BROKER_USER:-guest}"
+      DD_SECRET_KEY: "${DD_SECRET_KEY:-hhZCp@D28z!n@NED*yB!ROMt+WzsY*iq}"
+      DD_CREDENTIAL_AES_256_KEY: "${DD_CREDENTIAL_AES_256_KEY:-&91a*agLqesc*0DJ+2*bAbsUZfR*4nLw}"
+    volumes:
+        - type: bind
+          source: ./docker/extra_settings
+          target: /app/docker/extra_settings
+        - "defectdojo_media:${DD_MEDIA_ROOT:-/app/media}"
+  celerybeat:
+    platform: linux/x86_64
+    image: "defectdojo/defectdojo-django:${DJANGO_VERSION:-latest}"
+    depends_on:
+      - mysql
+      - rabbitmq
+    entrypoint: ['/wait-for-it.sh', 'mysql:3306', '-t', '30', '--', '/entrypoint-celery-beat.sh']
+    environment:
+      DD_DATABASE_URL: "${DD_DATABASE_URL:-mysql://defectdojo:defectdojo@mysql:3306/defectdojo}"
+      DD_CELERY_BROKER_USER: "${DD_CELERY_BROKER_USER:-guest}"
+      DD_CELERY_BROKER_PASSWORD: "${DD_CELERY_BROKER_USER:-guest}"
+      DD_SECRET_KEY: "${DD_SECRET_KEY:-hhZCp@D28z!n@NED*yB!ROMt+WzsY*iq}"
+      DD_CREDENTIAL_AES_256_KEY: "${DD_CREDENTIAL_AES_256_KEY:-&91a*agLqesc*0DJ+2*bAbsUZfR*4nLw}"
+    volumes:
+        - type: bind
+          source: ./docker/extra_settings
+          target: /app/docker/extra_settings
+  celeryworker:
+    platform: linux/x86_64
+    image: "defectdojo/defectdojo-django:${DJANGO_VERSION:-latest}"
+    depends_on:
+      - mysql
+      - rabbitmq
+    entrypoint: ['/wait-for-it.sh', 'mysql:3306', '-t', '30', '--', '/entrypoint-celery-worker.sh']
+    environment:
+      DD_DATABASE_URL: "${DD_DATABASE_URL:-mysql://defectdojo:defectdojo@mysql:3306/defectdojo}"
+      DD_CELERY_BROKER_USER: "${DD_CELERY_BROKER_USER:-guest}"
+      DD_CELERY_BROKER_PASSWORD: "${DD_CELERY_BROKER_USER:-guest}"
+      DD_SECRET_KEY: "${DD_SECRET_KEY:-hhZCp@D28z!n@NED*yB!ROMt+WzsY*iq}"
+      DD_CREDENTIAL_AES_256_KEY: "${DD_CREDENTIAL_AES_256_KEY:-&91a*agLqesc*0DJ+2*bAbsUZfR*4nLw}"
+    volumes:
+        - type: bind
+          source: ./docker/extra_settings
+          target: /app/docker/extra_settings
+        - "defectdojo_media:${DD_MEDIA_ROOT:-/app/media}"
+  initializer:
+    platform: linux/x86_64
+    image: "defectdojo/defectdojo-django:${DJANGO_VERSION:-latest}"
+    depends_on:
+      - mysql
+    entrypoint: ['/wait-for-it.sh', 'mysql:3306', '--', '/entrypoint-initializer.sh']
+    environment:
+      DD_DATABASE_URL: "${DD_DATABASE_URL:-mysql://defectdojo:defectdojo@mysql:3306/defectdojo}"
+      DD_ADMIN_USER: "${DD_ADMIN_USER:-admin}"
+      DD_ADMIN_MAIL: "${DD_ADMIN_USER:-admin@defectdojo.local}"
+      DD_ADMIN_FIRST_NAME: "${DD_ADMIN_FIRST_NAME:-Admin}"
+      DD_ADMIN_LAST_NAME: "${DD_ADMIN_LAST_NAME:-User}"
+      DD_INITIALIZE: "${DD_INITIALIZE:-true}"
+      DD_SECRET_KEY: "${DD_SECRET_KEY:-hhZCp@D28z!n@NED*yB!ROMt+WzsY*iq}"
+      DD_CREDENTIAL_AES_256_KEY: "${DD_CREDENTIAL_AES_256_KEY:-&91a*agLqesc*0DJ+2*bAbsUZfR*4nLw}"
+    volumes:
+        - type: bind
+          source: ./docker/extra_settings
+          target: /app/docker/extra_settings
+  mysql:
+    platform: linux/x86_64
+    image: mysql:5.7.37@sha256:afc453de0d675083ac00d0538521f8a9a67d1cce180d70fab9925ebcc87a0eba
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: 'yes'
+      DD_DATABASE_URL: "${DD_DATABASE_URL:-mysql://defectdojo:defectdojo@mysql:3306/defectdojo}"
+      MYSQL_USER: "${DD_DATABASE_USER:-defectdojo}"
+      MYSQL_PASSWORD: "${DD_DATABASE_PASSWORD:-defectdojo}"
+      MYSQL_DATABASE: "${DD_DATABASE_NAME:-defectdojo}"
+    command: ['mysqld', '--character-set-server=utf8mb4', '--collation-server=utf8mb4_unicode_ci']
+    volumes:
+       - defectdojo_data:/var/lib/mysql
+  rabbitmq:
+#    platform: linux/x86_64
+#    image: rabbitmq:3.9.13@sha256:cf92a7c03a4f1a1627e0b30650aae9c1345ac4a45bff94a0adf133b6980ce26f
+    image: rabbitmq:3-management-alpine
+    volumes:
+       - defectdojo_rabbitmq:/var/lib/rabbitmq
+volumes:
+  defectdojo_data: {}
+  defectdojo_media: {}
+  defectdojo_rabbitmq: {}
